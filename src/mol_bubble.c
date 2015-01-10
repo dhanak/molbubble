@@ -6,74 +6,65 @@ MenuLayerCallbacks s_menu_callbacks;
 
 enum
 {
-    MAX_STATION_NAME_LENGTH = 32,
-    MAX_NUMBER_OF_STATIONS = 10,
+    MAX_STATION_NAME_LENGTH = 64
 };
 
 struct Station
 {
     char name[MAX_STATION_NAME_LENGTH];
     uint16_t distance;
+    int16_t heading;
     uint8_t bikes;
     uint8_t racks;
-} s_stations[MAX_NUMBER_OF_STATIONS];
-uint s_number_of_stations = 0;
+} *s_stations = NULL;
+int s_stations_length = 0;
+int s_number_of_stations = -1;
 
 // Key values for AppMessage Dictionary
 enum
 {
+    KEY_NUM_STATIONS = 0,
     KEY_NAME,
     KEY_DISTANCE,
     KEY_BIKES,
-    KEY_RACKS
+    KEY_RACKS,
+    KEY_HEADING,
 };
-
-// Write message to buffer & send
-void send_message(void)
-{
-	DictionaryIterator *iter;
-	
-	app_message_outbox_begin(&iter);
-	//dict_write_uint8(iter, STATUS, 0x1);
-	
-	dict_write_end(iter);
-  	app_message_outbox_send();
-}
 
 // Called when a message is received from PebbleKitJS
 void inbox_received_callback(DictionaryIterator *iterator, void *context)
 {
-    // Get the first pair
     Tuple *t = dict_read_first(iterator);
-    s_number_of_stations = 0;
-
-    // Process all pairs present
     while(t != NULL)
     {
-        // Process this pair's key
-        struct Station *station = &s_stations[s_number_of_stations];
+        struct Station *station = s_stations ? &s_stations[s_number_of_stations] : NULL;
         switch (t->key)
         {
+        case KEY_NUM_STATIONS:
+            free(s_stations);
+            s_number_of_stations = -1;
+            s_stations_length = t->value->int32;
+            s_stations = calloc(s_stations_length, sizeof(struct Station));
+            break;
         case KEY_NAME:
-            strncpy(station->name, t->value->cstring, MAX_STATION_NAME_LENGTH);
+            if (station) strncpy(station->name, t->value->cstring, MAX_STATION_NAME_LENGTH);
             break;
         case KEY_DISTANCE:
-            station->distance = t->value->int32;
+            if (station) station->distance = t->value->int32;
             break;
         case KEY_BIKES:
-            station->bikes = t->value->int32;
+            if (station) station->bikes = t->value->int32;
+            break;
         case KEY_RACKS:
-            APP_LOG(APP_LOG_LEVEL_INFO, "Key %d received with value %d", (int)t->key, (int)t->value->int32);
-            station->racks = t->value->int32;
+            if (station) station->racks = t->value->int32;
+            break;
+        case KEY_HEADING:
+            if (station) station->heading = t->value->int32;
             break;
         }
-
-        // Get next pair, if any
         t = dict_read_next(iterator);
-        s_number_of_stations++;
     }
-    
-    // Reload menu
+    s_number_of_stations++;
     menu_layer_reload_data(s_menu_layer);
 }
 
@@ -94,15 +85,26 @@ void outbox_sent_callback(DictionaryIterator *iterator, void *context)
 
 uint16_t menu_get_num_rows(struct MenuLayer *menu_layer, uint16_t section_index, void *callback_context)
 {
-    return s_number_of_stations;
+    return s_stations_length == 0 ? 1 : s_stations_length;
 }
 
 void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *callback_context)
 {
-    struct Station *station = &s_stations[cell_index->row];
-    char subtext[64];
-    snprintf(subtext, 64, "%d meters, %d bikes/%d racks", station->distance, station->bikes, station->racks);
-    menu_cell_basic_draw(ctx, cell_layer, station->name, subtext, NULL);
+    if (!s_stations)
+    {
+        menu_cell_basic_draw(ctx, cell_layer, "Loading...", NULL, NULL);
+    }
+    else if (cell_index->row < s_number_of_stations)
+    {   // row already loaded
+        char buf[64];
+        struct Station *station = &s_stations[cell_index->row];
+        snprintf(buf, 64, "%dm, %d bikes/%d racks", station->distance, station->bikes, station->racks);
+        menu_cell_basic_draw(ctx, cell_layer, station->name, buf, NULL);
+    }
+    else
+    {   // row data still loading
+        menu_cell_basic_draw(ctx, cell_layer, "...", NULL, NULL);
+    }
 }
 
 void menu_select_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context)
@@ -113,6 +115,14 @@ void menu_select_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void
 void menu_select_long_click(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context)
 {
     APP_LOG(APP_LOG_LEVEL_INFO, "Item %d long clicked!", cell_index->row);
+
+    DictionaryIterator *iter;
+	app_message_outbox_begin(&iter);
+	dict_write_end(iter);
+  	app_message_outbox_send();
+    
+    s_number_of_stations = 0;
+    menu_layer_reload_data(s_menu_layer);
 }
 
 void init(void)
@@ -128,7 +138,8 @@ void init(void)
     s_menu_callbacks.select_click = menu_select_click;
     s_menu_callbacks.select_long_click = menu_select_long_click;
     
-    s_menu_layer = menu_layer_create(GRect(0, 0, 144, 168));
+    GRect bounds = layer_get_bounds(window_layer);
+    s_menu_layer = menu_layer_create(bounds);
     menu_layer_set_callbacks(s_menu_layer, NULL, s_menu_callbacks);
     layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
     menu_layer_set_click_config_onto_window(s_menu_layer, s_window);
@@ -147,6 +158,7 @@ void deinit(void)
 	app_message_deregister_callbacks();
     menu_layer_destroy(s_menu_layer);
 	window_destroy(s_window);
+    free(s_stations);
 }
 
 int main(void)

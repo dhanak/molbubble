@@ -1,15 +1,17 @@
 {
     "appKeys": {
-        "bikes": 2,
-        "distance": 1,
-        "name": 0,
-        "racks": 3
+        "bikes": 3,
+        "distance": 2,
+        "heading": 5,
+        "name": 1,
+        "num_stations": 0,
+        "racks": 4
     },
     "capabilities": [
         "location"
     ],
-    "companyName": "dhanak@gmail.com",
-    "longName": "MOL Bubble",
+    "companyName": "D\u00e1vid HAN\u00c1K <dhanak@gmail.com>",
+    "longName": "MOL BuBi for Pebble",
     "projectType": "native",
     "resources": {
         "media": [

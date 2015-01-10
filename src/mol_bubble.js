@@ -15,6 +15,10 @@ DistanceCalculator.prototype.degToRad = function(deg)
 {
     return deg*Math.PI/180;
 };
+DistanceCalculator.prototype.radToDeg = function(rad)
+{
+    return Math.round(rad*180/Math.PI);
+};
 DistanceCalculator.prototype.setup = function(coords)
 {
     var equatR = 6378.1370;
@@ -30,26 +34,49 @@ DistanceCalculator.prototype.setup = function(coords)
     var pps = polarR*polarR*sin;
     this.R = Math.sqrt((eec*eec + pps*pps) / (eec*this.cos + pps*sin));
 };
-DistanceCalculator.prototype.distance = function(coords)
+DistanceCalculator.prototype.polar = function(coords)
 {
     // https://en.wikipedia.org/wiki/Geographical_distance#Spherical_Earth_projected_to_a_plane
     var dlat = this.lat - this.degToRad(coords.lat);
     var dlon = this.lon - this.degToRad(coords.lon);
     var cos_dlon = this.cos * dlon;
-    return Math.round(this.R * Math.sqrt(dlat*dlat + cos_dlon*cos_dlon) * 1000);
+    return {
+        "r": Math.round(this.R * Math.sqrt(dlat*dlat + cos_dlon*cos_dlon) * 1000),
+        "a": Math.atan2(dlat, this.cos*dlon)
+    };
 };
 
 var stations = [];
+var stations_to_send = 0;
+var next_station_to_send = 0;
 var dc = new DistanceCalculator();
 
 function appMessageSent(e)
 {
     console.log("Station sent to Pebble successfully!");
+    next_station_to_send++;
+    sendNextStation();
 }
 
 function appMessageError(e)
 {
-     console.log("Error sending weather info to Pebble!");
+    console.log("Error sending info to Pebble!");
+    sendNextStation();
+}
+
+function sendNextStation()
+{
+    if (next_station_to_send < stations_to_send)
+    {
+        var station = stations[next_station_to_send];
+        Pebble.sendAppMessage({
+            "name": station.name,
+            "distance": station.dist,
+            "heading": dc.radToDeg(station.heading),
+            "bikes": station.bikes,
+            "racks": station.racks
+        }, appMessageSent, appMessageError);
+    }
 }
 
 function updateStations()
@@ -57,25 +84,18 @@ function updateStations()
     if (stations.length === 0 || isNaN(dc.lat) || isNaN(dc.lon))
         return;
     
-    var i;
-    var station;
-    for (i = 0; i < stations.length; i++)
+    for (var i = 0; i < stations.length; i++)
     {
-        station = stations[i];
-        station.dist = dc.distance(station);
+        var station = stations[i];
+        var polar = dc.polar(station);
+        station.dist = polar.r;
+        station.heading = polar.a;
     }
     stations.sort(function (a,b) { return a.dist - b.dist; });
 
-    for (i = 0; i < Math.min(stations.length,10); i++)
-    {
-        station = stations[i];
-        Pebble.sendAppMessage({
-            "name": station.name,
-            "distance": station.dist,
-            "bikes": station.bikes,
-            "racks": station.racks
-        }, appMessageSent, appMessageError);
-    }
+    next_station_to_send = -1;
+    stations_to_send = Math.min(stations.length, 10);
+    Pebble.sendAppMessage({"num_stations":stations_to_send}, appMessageSent);
 }
 
 function locationSuccess(pos)
@@ -107,10 +127,10 @@ function fetchStationList()
                 var place = places[j];
                 stations.push({
                     "name": place.getAttribute("name").slice(5),
-                    "lat": place.getAttribute("lat"),
-                    "lon": place.getAttribute("lng"),
-                    "bikes": place.getAttribute("bikes"),
-                    "racks": place.getAttribute("bike_racks")
+                    "lat": parseFloat(place.getAttribute("lat")),
+                    "lon": parseFloat(place.getAttribute("lng")),
+                    "bikes": parseInt(place.getAttribute("bikes")),
+                    "racks": parseInt(place.getAttribute("bike_racks"))
                 });
            }
         }
