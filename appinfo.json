@@ -1,0 +1,31 @@
+{
+    "appKeys": {
+        "bikes": 2,
+        "distance": 1,
+        "name": 0,
+        "racks": 3
+    },
+    "capabilities": [
+        "location"
+    ],
+    "companyName": "dhanak@gmail.com",
+    "longName": "MOL Bubble",
+    "projectType": "native",
+    "resources": {
+        "media": [
+            {
+                "file": "images/bw_bubi.png",
+                "menuIcon": true,
+                "name": "MENU_ICON",
+                "type": "png"
+            }
+        ]
+    },
+    "shortName": "MOL Bubble",
+    "uuid": "6a2f3113-323c-4bca-931e-ad57c446fbc4",
+    "versionCode": 1,
+    "versionLabel": "1.0",
+    "watchapp": {
+        "watchface": false
+    }
+}
