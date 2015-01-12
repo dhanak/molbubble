@@ -1,12 +1,12 @@
 {
     "appKeys": {
-        "bikes": 3,
-        "distance": 2,
-        "heading": 5,
-        "name": 1,
-        "num_stations": 0,
-        "racks": 4,
-        "uid": 6
+        "index": 3,
+        "name": 4,
+        "num_stations": 2,
+        "racks": 5,
+        "update": 6,
+        "x": 0,
+        "y": 1
     },
     "capabilities": [
         "location"

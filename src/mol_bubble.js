@@ -1,141 +1,178 @@
-function xhrRequest(url, type, callback)
-{
-  var xhr = new XMLHttpRequest();
-  xhr.onload = function () { callback(this.responseXML); };
-  xhr.open(type, url);
-  xhr.send();
-}
+var stations = [];
 
-var DistanceCalculator = function()
-{
-    this.R = 6371.009; // default radius
-    this.lat = this.lon = this.cos = NaN;
+// for debugging with jsfiddle.net
+/*
+var Pebble = {
+    "addEventListener": function(evt, listener)
+    {
+        if (evt == "ready")
+            listener(0);
+    },
+    "sendAppMessage": function(msg, ack, nack)
+    {
+        console.log(msg);
+        ack(0);
+    }
 };
-DistanceCalculator.prototype.degToRad = function(deg)
-{
-    return deg*Math.PI/180;
-};
-DistanceCalculator.prototype.radToDeg = function(rad)
-{
-    return Math.round(rad*180/Math.PI);
-};
-DistanceCalculator.prototype.setup = function(coords)
+*/
+
+// distance calculator
+var DistanceCalculator = function(coords)
 {
     var equatR = 6378.1370;
     var polarR = 6356.7523;
     
     this.lat = this.degToRad(coords.latitude);
     this.lon = this.degToRad(coords.longitude);
-    this.sin = Math.sin(this.lat);
+    var  sin = Math.sin(this.lat);
     this.cos = Math.cos(this.lat);
 
     // https://en.wikipedia.org/wiki/Earth_radius#Geocentric_radius
     var eec = equatR*equatR*this.cos;
-    var pps = polarR*polarR*this.sin;
-    this.R = Math.sqrt((eec*eec + pps*pps) / (eec*this.cos + pps*this.sin));
+    var pps = polarR*polarR*sin;
+    this.R = Math.sqrt((eec*eec + pps*pps) / (eec*this.cos + pps*sin));
 };
-DistanceCalculator.prototype.polar = function(coords)
+DistanceCalculator.prototype.degToRad = function(deg)
 {
-    // https://en.wikipedia.org/wiki/Geographical_distance#Spherical_Earth_projected_to_a_plane
-    var lat2 = this.degToRad(coords.lat);
-    var lon2 = this.degToRad(coords.lon);
+    return deg*Math.PI/180;
+};
+DistanceCalculator.prototype.toSquare = function(coords)
+{   // https://en.wikipedia.org/wiki/Geographical_distance#Spherical_Earth_projected_to_a_plane
+    var lat2 = this.degToRad(coords.latitude);
+    var lon2 = this.degToRad(coords.longitude);
     var dlat = this.lat - lat2;
     var dlon = this.lon - lon2;
-    var cos_dlon = this.cos * dlon;
-    var dist = Math.round(this.R * Math.sqrt(dlat*dlat + cos_dlon*cos_dlon) * 1000);
-    // http://www.movable-type.co.uk/scripts/latlong.html
-    var x = this.cos*Math.sin(lat2) - this.sin*Math.cos(lat2)*Math.cos(dlon);
-    var y = Math.sin(dlon) * Math.cos(lat2);
-    var bearing = Math.atan2(y,x);
-    return { "r": dist, "a": bearing };
+    return { "x": Math.round(this.R*this.cos*dlon*1000), "y": Math.round(this.R*dlat*1000) };
 };
+var dc;
 
-var stations = [];
-var stations_to_send = 0;
-var next_station_to_send = 0;
-var selected_uid = 0;
-var station_list_dirty = false;
-var dc = new DistanceCalculator();
-
-function appMessageSent(e)
+// station publisher sends station names and locations over to Pebble, one by one
+var StationPublisher = function() {};
+StationPublisher.prototype.sent = function(e)
 {
-    console.log("Station sent to Pebble successfully!");
-    if (selected_uid === 0)
+    console.log("Station info sent to Pebble successfully!");
+    this.next++;
+    this.sendNext();
+};
+StationPublisher.prototype.error = function(e)
+{
+    console.log("Sending station info to Pebble failed, retrying!");
+    this.sendNext();
+};
+StationPublisher.prototype.sendNext = function()
+{
+    if (this.next < stations.length)
     {
-        next_station_to_send++;
-        sendNextStation();
-    }
-}
-
-function appMessageError(e)
-{
-    console.log("Error sending info to Pebble!");
-    sendNextStation();
-}
-
-function sendNextStation()
-{
-    if (next_station_to_send < stations_to_send)
-    {
-        var station = stations[next_station_to_send];
+        var station = stations[this.next];
+        var pos = dc.toSquare(station);
         Pebble.sendAppMessage({
-            "uid": station.uid,
+            "index": this.next,
             "name": station.name,
-            "distance": station.dist,
-            "heading": dc.radToDeg(station.heading),
-            "bikes": station.bikes,
+            "x": pos.x,
+            "y": pos.y,
             "racks": station.racks
-        }, appMessageSent, appMessageError);
+        }, this.sent.bind(this), this.error.bind(this));
     }
-}
-
-function updateStations()
+};
+StationPublisher.prototype.publish = function()
 {
-    if (stations.length === 0 || isNaN(dc.lat) || isNaN(dc.lon))
-        return;
+    this.next = -1; // sent() will set it to 0
+    Pebble.sendAppMessage({ "num_stations": stations.length },
+        this.sent.bind(this), this.publish.bind(this));
+};
+var stationPublisher = new StationPublisher();
+
+// station updater sends updated station information to Pebble in reasonable chunks
+var StationUpdater = function()
+{
+    this.chunkSize = 120;
+};
+StationUpdater.prototype.sent = function(e)
+{
+    console.log("Station data sent to Pebble successfully!");
+    this.next += this.chunkSize;
+    this.sendNextChunk();
+};
+StationUpdater.prototype.error = function(e)
+{
+    console.log("Sending station data to Pebble failed, retrying!");
+    this.sendNextChunk();
     
-    next_station_to_send = -1;
-    for (var i = 0; i < stations.length; i++)
+};
+StationUpdater.prototype.sendNextChunk = function()
+{
+    if (this.next < stations.length)
     {
-        var station = stations[i];
-        var polar = dc.polar(station);
-        station.dist = polar.r;
-        station.heading = polar.a;
-        if (station.uid == selected_uid)
+        var update = [ this.next ];
+        var to = Math.min(stations.length, this.next + this.chunkSize);
+        for (var i = this.next; i < to; i++)
         {
-            next_station_to_send = i;
+            var station = stations[i];
+            update.push(station.bikes);
         }
+        Pebble.sendAppMessage({ "update": update }, this.sent.bind(this), this.error.bind(this));
     }
+};
+StationUpdater.prototype.publish = function()
+{
+    this.next = -this.chunkSize; // sent() will set it to 0
+    Pebble.sendAppMessage({ "num_stations": stations.length },
+        this.sent.bind(this), this.publish.bind(this));
+};
+var stationUpdater = new StationUpdater();
 
-    if (next_station_to_send == -1)
-    {   // send all stations
-        stations.sort(function (a,b) { return a.dist - b.dist; });
-        stations_to_send = Math.min(stations.length, 10);
-        Pebble.sendAppMessage({"num_stations":stations_to_send}, appMessageSent);
-        station_list_dirty = false;
+// location updater
+var LocationUpdater = function() {};
+LocationUpdater.prototype.recieved = function(pos)
+{
+    console.log("Recieved updated coordinates!");
+    if (this.coords != pos.coords)
+    {
+        this.coords = pos.coords;
+        this.publish();
     }
-    else
-    {   // send distance and heading for selected station
-        sendNextStation();
-        station_list_dirty = true;
+};
+LocationUpdater.prototype.error = function(err)
+{
+    console.log("Error recieving updated coordinates!");
+};
+LocationUpdater.prototype.sent = function(e)
+{
+    console.log("Position data sent to Pebble successfully!");
+};
+LocationUpdater.prototype.send = function(pos)
+{
+    Pebble.sendAppMessage(pos, this.sent.bind(this), this.send.bind(this, pos));
+};
+LocationUpdater.prototype.publish = function()
+{
+    if (dc && this.coords)
+    {
+        var xy = dc.toSquare(this.coords);
+        this.send(xy);
     }
-}
-
-function locationSuccess(pos)
+};
+LocationUpdater.prototype.subscribe = function()
 {
-    dc.setup(pos.coords);
-    console.log("Recieved updated coordinates");
-    updateStations();
-}
+    navigator.geolocation.watchPosition(
+        this.recieved.bind(this), this.error.bind(this),
+        {timeout: 15000, maximumAge: 60000}
+    );
+};
+var locationUpdater = new LocationUpdater();
 
-function locationError(err)
+// station list updater
+var DataLoader = function() {};
+DataLoader.prototype.xhrRequest = function(url, type, callback)
 {
-    console.log("Error requesting location!");
-}
-
-function fetchStationList()
+  var xhr = new XMLHttpRequest();
+  xhr.onload = function () { callback(this.responseXML); };
+  xhr.open(type, url);
+  xhr.send();
+};
+DataLoader.prototype.update = function(publish)
 {
-    xhrRequest("https://nextbike.net/maps/nextbike-live.xml?&domains=mb", 'GET', function(responseXML)
+    this.xhrRequest("https://nextbike.net/maps/nextbike-live.xml?&domains=mb", 'GET', function(responseXML)
     {
         stations = [];
         var cities = responseXML.getElementsByTagName("city");
@@ -144,6 +181,14 @@ function fetchStationList()
             var city = cities[i];
             if (city.getAttribute("name") != "Budapest")
                 continue;
+
+            var coords = {
+                "latitude": parseFloat(city.getAttribute("lat")),
+                "longitude": parseFloat(city.getAttribute("lng"))
+            };
+            dc = new DistanceCalculator(coords);
+            locationUpdater.publish();
+
             var places = city.getElementsByTagName("place");
             for (var j = 0; j < places.length; j++)
             {
@@ -151,40 +196,34 @@ function fetchStationList()
                 stations.push({
                     "uid": parseInt(place.getAttribute("uid")),
                     "name": place.getAttribute("name").slice(5),
-                    "lat": parseFloat(place.getAttribute("lat")),
-                    "lon": parseFloat(place.getAttribute("lng")),
+                    "latitude": place.getAttribute("lat"),
+                    "longitude": place.getAttribute("lng"),
                     "bikes": parseInt(place.getAttribute("bikes")),
                     "racks": parseInt(place.getAttribute("bike_racks"))
                 });
-           }
+            }
+            break;
         }
         console.log("Collected data for " + stations.length + " stations from nextbike.net");
-        updateStations();
+        stations.sort(function(a,b) { return a.uid - b.uid; });
+        stationUpdater.publish();
+        if (publish)
+        {
+            stationPublisher.publish();
+        }
     });
-}
+};
+var dataLoader = new DataLoader();
 
-// Listen for when the watchface is opened
 Pebble.addEventListener('ready', function(e)
 {
     console.log("PebbleKit JS ready!");
-    navigator.geolocation.watchPosition(locationSuccess, locationError, {timeout: 15000, maximumAge: 60000});
-    fetchStationList();
+    locationUpdater.subscribe();
+    dataLoader.update(true);
 });
 
-// Listen for when an AppMessage is received
 Pebble.addEventListener('appmessage', function(e)
 {
     console.log("AppMessage received!");
-    if (e.payload.uid === 0 && selected_uid === 0)
-    {   // refresh station list
-        fetchStationList();
-    }
-    else
-    {   // select or deselect station
-        selected_uid = e.payload.uid;
-        if (selected_uid === 0 && station_list_dirty)
-        {
-            updateStations();
-        }
-    }
+    dataLoader.update(false);
 });
