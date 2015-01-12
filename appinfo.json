@@ -5,7 +5,8 @@
         "heading": 5,
         "name": 1,
         "num_stations": 0,
-        "racks": 4
+        "racks": 4,
+        "uid": 6
     },
     "capabilities": [
         "location"
@@ -15,6 +16,11 @@
     "projectType": "native",
     "resources": {
         "media": [
+            {
+                "file": "images/arrow48.png",
+                "name": "COMPASS",
+                "type": "png-trans"
+            },
             {
                 "file": "images/bw_bubi.png",
                 "menuIcon": true,
