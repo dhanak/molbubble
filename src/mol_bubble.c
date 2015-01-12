@@ -15,7 +15,7 @@ enum
 // other constants
 enum
 {
-    MAX_STATION_NAME_LENGTH = 64,
+    MAX_STATION_NAME_LENGTH = 32,
     MAX_DISTANCE_LENGTH     = 32,
 };
 
@@ -144,6 +144,26 @@ void persist_read_stations()
     }
 }
 
+void copy_name(char *dst, const char *src)
+{
+    int l = strlen(src);
+    if (l < MAX_STATION_NAME_LENGTH)
+    {
+        strcpy(dst, src);
+    }
+    else
+    {
+        l = MAX_STATION_NAME_LENGTH-4; // ellipsis + terminating null
+        while (src[l] & 0x80)
+            l--; // find last ASCII char
+        strncpy(dst, src, l);
+        dst[l++] = 0xE2; // horizontal ellipsis
+        dst[l++] = 0x80;
+        dst[l++] = 0xA6;
+        dst[l] = '\0';
+    }
+}
+
 // compass window functions
 
 void update_compass_distance()
@@ -201,7 +221,7 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context)
                 switch (t->key)
                 {
                 case KEY_NAME:
-                    strncpy(station->name, t->value->cstring, MAX_STATION_NAME_LENGTH);
+                    copy_name(station->name, t->value->cstring);
                     break;
                 case KEY_X:
                     station->coords.x = t->value->int32;
