@@ -17,9 +17,29 @@
     "resources": {
         "media": [
             {
-                "file": "images/arrow48.png",
+                "file": "images/dither.png",
+                "name": "DITHER",
+                "type": "png"
+            },
+            {
+                "file": "images/bubi_32.png",
+                "name": "BIKE",
+                "type": "png"
+            },
+            {
+                "file": "images/location_32.png",
+                "name": "LOCATION",
+                "type": "png"
+            },
+            {
+                "file": "images/map-marker_32.png",
+                "name": "MAP",
+                "type": "png"
+            },
+            {
+                "file": "images/arrow_48.png",
                 "name": "COMPASS",
-                "type": "png-trans"
+                "type": "png"
             },
             {
                 "file": "images/bw_bubi.png",
