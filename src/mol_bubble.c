@@ -111,17 +111,6 @@ void reallocate_stations(int size)
     s_pending.stations = size;
 }
 
-void update_station(Station *station)
-{
-    if (!s_pending.location)
-    {
-        int32_t dx = station->coords.x - s_last_known_coords.x;
-        int32_t dy = station->coords.y - s_last_known_coords.y;
-        station->distance = sqrt32(dx*dx + dy*dy);
-        station->bearing = atan2_lookup(dx, -dy);
-    }
-}
-
 void swap_stations(int a, int b)
 {
     Station* tmp = s_sorted_stations[a];
@@ -151,24 +140,54 @@ void sort_stations(int start, int end)
     }
 }
 
+void update_station(Station *station)
+{
+    if (!s_pending.location)
+    {
+        int32_t dx = station->coords.x - s_last_known_coords.x;
+        int32_t dy = station->coords.y - s_last_known_coords.y;
+        station->distance = sqrt32(dx*dx + dy*dy);
+        station->bearing = atan2_lookup(dx, -dy);
+    }
+}
+
+void update_stations()
+{
+    if (!s_pending.stations)
+    {
+        for (int i = 0; i < s_stations_size; i++)
+        {
+            update_station(&s_stations[i]);
+        }
+        sort_stations(0, s_stations_size-1);
+    }
+}
+
 void persist_write_stations()
 {
     persist_write_int(0, s_stations_size);
     for (int i = 0; i < s_stations_size; i++)
     {
-        persist_write_data(i+1, &s_stations[i], STATION_PERSIST_SIZE);
+        if (s_stations[i].name[0])
+        {
+            persist_write_data(i+1, &s_stations[i], STATION_PERSIST_SIZE);
+        }
     }
 }
 
 void persist_read_stations()
 {
     int size = persist_read_int(0);
+    persist_delete(0);
     reallocate_stations(size);
     for (int i = 0; i < size; i++)
     {
-        if (!persist_read_data(i+1, &s_stations[i], STATION_PERSIST_SIZE))
-            break;
-        s_pending.stations--;
+        persist_read_data(i+1, &s_stations[i], STATION_PERSIST_SIZE);
+        persist_delete(i+1);
+        if (s_stations[i].name[0])
+        {
+            s_pending.stations--;
+        }
     }
 }
 
@@ -220,6 +239,11 @@ void resize_menu(GRect *frame)
         animation_schedule((Animation*)s_menu_animation);
         animation_schedule((Animation*)s_icon_animation);
     }
+}
+
+void refresh_icons()
+{
+    layer_mark_dirty(s_icon_layer);
 }
 
 void refresh_menu()
@@ -294,9 +318,9 @@ void update_compass_direction(CompassHeading heading)
 void send_request()
 {
     DictionaryIterator *iter;
-	app_message_outbox_begin(&iter);
-	dict_write_end(iter);
-  	app_message_outbox_send();
+    app_message_outbox_begin(&iter);
+    dict_write_end(iter);
+    app_message_outbox_send();
 }
 
 void inbox_received_callback(DictionaryIterator *iterator, void *context)
@@ -336,13 +360,17 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context)
             if (s_pending.stations)
             {
                 s_pending.stations--;
+                refresh_icons();
             }
-            update_station(station);
-            sort_stations(0, s_stations_size-1);
+            if (i == s_stations_size-1)
+            {   // received last refresh, update
+                update_stations();
+            }
             // update display
             refresh_menu();
             if (station == s_selected_station)
             {
+                update_station(station);
                 update_compass_distance();
             }
         }
@@ -355,6 +383,7 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context)
         }
         s_pending.bikes = false;
         // update display
+        refresh_icons();
         refresh_menu();
     }
     else
@@ -374,12 +403,9 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context)
             t = dict_read_next(iterator);
         }
         s_pending.location = false;
-        for (int i = 0; i < s_stations_size; i++)
-        {
-            update_station(&s_stations[i]);
-        }
-        sort_stations(0, s_stations_size-1);
+        update_stations();
         // update display
+        refresh_icons();
         refresh_menu();
         update_compass_distance();
     }
@@ -414,7 +440,9 @@ void icon_layer_update(Layer *layer, GContext *ctx)
     rect.origin.x = 10;
     if (s_pending.stations)
     {
+        rect.size.h = s_stations_size ? 32 * s_pending.stations/s_stations_size : 32;
         graphics_draw_bitmap_in_rect(ctx, s_icons[ICON_DITHER], rect);
+        rect.size.h = 32;
     }
     rect.origin.x += 42;
     if (s_pending.bikes)
@@ -457,7 +485,7 @@ void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index
         *p++ = 0x80;
         *p++ = 0xA6;
     }
-    menu_cell_basic_draw(ctx, cell_layer, station->name[0] ? station->name : "...", buf, NULL);
+    menu_cell_basic_draw(ctx, cell_layer, station->name[0] ? station->name : "\xe2\x80\xa6", buf, NULL);
 }
 
 void menu_selection_changed(MenuLayer *menu_layer, MenuIndex new_index, MenuIndex old_index, void *callback_context)
@@ -565,8 +593,8 @@ void init(void)
     s_icons[ICON_DITHER]   = gbitmap_create_with_resource(RESOURCE_ID_DITHER);
 
     // create main window
-	s_main_window = window_create();
-	window_stack_push(s_main_window, true);
+    s_main_window = window_create();
+    window_stack_push(s_main_window, true);
     Layer *window_layer = window_get_root_layer(s_main_window);
     
     s_icon_layer = layer_create(GRect(0, 0, 144, ICON_LAYER_HEIGHT));
@@ -598,23 +626,23 @@ void init(void)
     });
     window_set_click_config_provider(s_compass_window, compass_window_click_config_provider);
 
-	// register AppMessage handlers
+    // register AppMessage handlers
     app_message_register_inbox_received(inbox_received_callback);
     app_message_register_inbox_dropped(inbox_dropped_callback);
     app_message_register_outbox_failed(outbox_failed_callback);
     app_message_register_outbox_sent(outbox_sent_callback);
-		
-	app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
+
+    app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
 }
 
 void deinit(void)
 {
     stop_menu_animations();
-	app_message_deregister_callbacks();
+    app_message_deregister_callbacks();
     window_destroy(s_compass_window);
     menu_layer_destroy(s_menu_layer);
     layer_destroy(s_icon_layer);
-	window_destroy(s_main_window);
+    window_destroy(s_main_window);
 
     for (int i = 0; i < ICON_COUNT; i++)
     {
@@ -628,7 +656,7 @@ void deinit(void)
 
 int main(void)
 {
-	init();
-	app_event_loop();
-	deinit();
+    init();
+    app_event_loop();
+    deinit();
 }
