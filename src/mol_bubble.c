@@ -175,7 +175,7 @@ void persist_read_stations()
 void copy_name(char *dst, const char *src)
 {
     int l = strlen(src);
-    if (l < MAX_STATION_NAME_LENGTH)
+    if (l+1 < MAX_STATION_NAME_LENGTH)
     {
         strcpy(dst, src);
     }
@@ -559,6 +559,11 @@ void init(void)
     // read persistence data
     persist_read_stations();
     
+    s_icons[ICON_STATIONS] = gbitmap_create_with_resource(RESOURCE_ID_MAP);
+    s_icons[ICON_BIKES]    = gbitmap_create_with_resource(RESOURCE_ID_BIKE);
+    s_icons[ICON_LOCATION] = gbitmap_create_with_resource(RESOURCE_ID_LOCATION);
+    s_icons[ICON_DITHER]   = gbitmap_create_with_resource(RESOURCE_ID_DITHER);
+
     // create main window
 	s_main_window = window_create();
 	window_stack_push(s_main_window, true);
@@ -567,10 +572,6 @@ void init(void)
     s_icon_layer = layer_create(GRect(0, 0, 144, ICON_LAYER_HEIGHT));
     layer_set_update_proc(s_icon_layer, icon_layer_update);
     layer_add_child(window_layer, s_icon_layer);
-    s_icons[ICON_STATIONS] = gbitmap_create_with_resource(RESOURCE_ID_MAP);
-    s_icons[ICON_BIKES]    = gbitmap_create_with_resource(RESOURCE_ID_BIKE);
-    s_icons[ICON_LOCATION] = gbitmap_create_with_resource(RESOURCE_ID_LOCATION);
-    s_icons[ICON_DITHER]   = gbitmap_create_with_resource(RESOURCE_ID_DITHER);
 
     s_menu_callbacks.get_num_rows = menu_get_num_rows;
     s_menu_callbacks.draw_row = menu_draw_row;
@@ -609,19 +610,20 @@ void init(void)
 void deinit(void)
 {
     stop_menu_animations();
-    window_destroy(s_compass_window);
 	app_message_deregister_callbacks();
+    window_destroy(s_compass_window);
     menu_layer_destroy(s_menu_layer);
     layer_destroy(s_icon_layer);
 	window_destroy(s_main_window);
-    persist_write_stations();
-    free(s_stations);
-    free(s_sorted_stations);
 
     for (int i = 0; i < ICON_COUNT; i++)
     {
         gbitmap_destroy(s_icons[i]);
     }
+    
+    persist_write_stations();
+    free(s_stations);
+    free(s_sorted_stations);
 }
 
 int main(void)
