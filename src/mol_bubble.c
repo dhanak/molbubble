@@ -66,6 +66,7 @@ Window *s_compass_window;
 GBitmap* s_compass_bitmap;
 RotBitmapLayer *s_compass_layer;
 TextLayer *s_station_name_layer;
+TextLayer *s_calibration_layer;
 TextLayer *s_distance_layer;
 InverterLayer *s_inverter_layer;
 char s_distance_str[MAX_DISTANCE_LENGTH];
@@ -495,8 +496,11 @@ void menu_selection_changed(MenuLayer *menu_layer, MenuIndex new_index, MenuInde
 
 void menu_select_click(MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context)
 {
-    s_selected_station = s_sorted_stations[cell_index->row];  // just in case no row is selected yet
-    window_stack_push(s_compass_window, true);
+    if (!s_pending.stations && !s_pending.location)
+    {
+        s_selected_station = s_sorted_stations[cell_index->row];  // just in case no row is selected yet
+        window_stack_push(s_compass_window, true);
+    }
 }
 
 void menu_select_long_click(MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context)
@@ -504,9 +508,24 @@ void menu_select_long_click(MenuLayer *menu_layer, MenuIndex *cell_index, void *
     send_request();
 }
 
-void compass_handler(CompassHeadingData heading)
+void compass_toggle_calibration_text(CompassHeadingData headingData)
 {
-    update_compass_direction(heading.true_heading);
+    layer_set_hidden((Layer*)s_calibration_layer, headingData.compass_status != CompassStatusDataInvalid);
+}
+
+void compass_handler(CompassHeadingData headingData)
+{
+    compass_toggle_calibration_text(headingData);
+    update_compass_direction(headingData.true_heading);
+}
+
+void compass_set_text_layer_properties(TextLayer *text_layer, const char *font_key)
+{
+    text_layer_set_font(text_layer, fonts_get_system_font(font_key));
+    text_layer_set_background_color(text_layer, GColorClear);
+    text_layer_set_text_color(text_layer, GColorWhite);
+    text_layer_set_text_alignment(text_layer, GTextAlignmentCenter);
+    text_layer_set_overflow_mode(text_layer, GTextOverflowModeTrailingEllipsis);
 }
 
 void compass_window_load()
@@ -514,29 +533,35 @@ void compass_window_load()
     Layer *window_layer = window_get_root_layer(s_compass_window);
     GRect bounds = layer_get_bounds(window_layer);
     
-    s_station_name_layer = text_layer_create(GRect(0, 0, 144, 48));
-    text_layer_set_font(s_station_name_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
-    text_layer_set_background_color(s_station_name_layer, GColorClear);
-    text_layer_set_text_color(s_station_name_layer, GColorWhite);
-    text_layer_set_text_alignment(s_station_name_layer, GTextAlignmentCenter);
-    text_layer_set_overflow_mode(s_station_name_layer, GTextOverflowModeTrailingEllipsis);
+    // station name
+    s_station_name_layer = text_layer_create(GRect(0, 0, 144, 52));
+    compass_set_text_layer_properties(s_station_name_layer, FONT_KEY_GOTHIC_24_BOLD);
     layer_add_child(window_layer, text_layer_get_layer(s_station_name_layer));
     
+    // compass
     s_compass_bitmap = gbitmap_create_with_resource(RESOURCE_ID_COMPASS);
     s_compass_layer = rot_bitmap_layer_create(s_compass_bitmap);
     bitmap_layer_set_bitmap((BitmapLayer*)s_compass_layer, s_compass_bitmap);
     GRect compass_frame = layer_get_frame((Layer*)s_compass_layer);
     compass_frame.origin.x = (bounds.size.w-compass_frame.size.w)/2;
-    compass_frame.origin.y = 62;
+    compass_frame.origin.y = 60;
     layer_set_frame((Layer*)s_compass_layer, compass_frame);
     layer_add_child(window_layer, bitmap_layer_get_layer((BitmapLayer*)s_compass_layer));
     
+    // distance
     s_distance_layer = text_layer_create(GRect(0, bounds.size.h-26, 144, 24));
-    text_layer_set_font(s_distance_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24));
-    text_layer_set_background_color(s_distance_layer, GColorClear);
-    text_layer_set_text_color(s_distance_layer, GColorWhite);
-    text_layer_set_text_alignment(s_distance_layer, GTextAlignmentCenter);
+    compass_set_text_layer_properties(s_distance_layer, FONT_KEY_GOTHIC_24);
     layer_add_child(window_layer, text_layer_get_layer(s_distance_layer));
+    
+    // calibration text
+    s_calibration_layer = text_layer_create(GRect(0, 0, 144, bounds.size.h));
+    compass_set_text_layer_properties(s_calibration_layer, FONT_KEY_GOTHIC_24_BOLD);
+    text_layer_set_background_color(s_calibration_layer, GColorBlack);
+    text_layer_set_text(s_calibration_layer, "Compass is calibrating!\n\nMove your wrist around to aid calibration.");
+    CompassHeadingData headingData;
+    compass_service_peek(&headingData);
+    compass_toggle_calibration_text(headingData);
+    layer_add_child(window_layer, text_layer_get_layer(s_calibration_layer));
     
     s_inverter_layer = NULL;
     if (watch_info_get_color() == WATCH_INFO_COLOR_WHITE)
@@ -561,6 +586,7 @@ void compass_window_disappear()
 void compass_window_unload()
 {
     inverter_layer_destroy(s_inverter_layer);
+    text_layer_destroy(s_calibration_layer);
     text_layer_destroy(s_distance_layer);
     rot_bitmap_layer_destroy(s_compass_layer);
     gbitmap_destroy(s_compass_bitmap);
