@@ -1,7 +1,6 @@
-var stations = [];
-
 // for debugging with jsfiddle.net
 /*
+var cnt = 0;
 var Pebble = {
     "addEventListener": function(evt, listener)
     {
@@ -10,11 +9,80 @@ var Pebble = {
     },
     "sendAppMessage": function(msg, ack, nack)
     {
-        console.log(msg);
-        ack(0);
+        if (cnt++ % 5)
+        {
+            console.log(msg);
+            ack(0);
+        }
+        else
+        {
+            nack(0);
+        }
     }
 };
 */
+
+var MessageQueue = function()
+{
+	this.queue = [];
+	this.sending = false;
+	
+	this.MAX_RETRY  = 5;
+	this.ACK_DELAY  = 0;
+	this.NACK_DELAY = 200;
+	this.TIMEOUT    = 1000;
+};
+MessageQueue.prototype.sendAppMessage = function(message, type, highPrio)
+{
+    this.queue[(highPrio ? "unshift" : "push")]({
+		message: message,
+		type: type,
+		attempts: 0
+    });
+	if (!this.sending)
+	{
+		this.sendNext();
+	}
+};
+MessageQueue.prototype.sendNext = function()
+{
+	this.sending = true;
+	var message = this.queue.shift();
+    if (!message)
+	{
+		this.sending = false;
+		return;
+	}
+
+    message.attempts += 1;
+	
+	var mq = this;
+	var timer = setTimeout(function() {
+		mq.sendNext();
+	}, this.TIMEOUT);
+	
+    Pebble.sendAppMessage(message.message,
+	function() // ack
+	{
+		clearTimeout(timer);
+		console.log("Sending " + message.type + " succeeded!");
+		setTimeout(function() { mq.sendNext(); }, mq.ACK_DELAY);
+	},
+	function() // nack
+	{
+		clearTimeout(timer);
+		if (message.attempts < mq.MAX_RETRY)
+		{
+			mq.queue.unshift(message);
+			setTimeout(function() { mq.sendNext(); }, mq.NACK_DELAY*message.attempts);
+		}
+		else
+		{
+			console.log("Giving up on sending " + message.type + "!");
+		}
+	});
+};
+var msgQueue = new MessageQueue();
 
 // distance calculator
 var DistanceCalculator = function(coords)
@@ -46,81 +114,6 @@ DistanceCalculator.prototype.toSquare = function(coords)
 };
 var dc;
 
-// station publisher sends station names and locations over to Pebble, one by one
-var StationPublisher = function() {};
-StationPublisher.prototype.sent = function(e)
-{
-    console.log("Station info sent to Pebble successfully!");
-    this.next++;
-    this.sendNext();
-};
-StationPublisher.prototype.error = function(e)
-{
-    console.log("Sending station info to Pebble failed, retrying!");
-    this.sendNext();
-};
-StationPublisher.prototype.sendNext = function()
-{
-    if (this.next < stations.length)
-    {
-        var station = stations[this.next];
-        var pos = dc.toSquare(station);
-        Pebble.sendAppMessage({
-            "index": this.next,
-            "name": station.name,
-            "x": pos.x,
-            "y": pos.y,
-            "racks": station.racks
-        }, this.sent.bind(this), this.error.bind(this));
-    }
-};
-StationPublisher.prototype.publish = function()
-{
-    this.next = -1; // sent() will set it to 0
-    Pebble.sendAppMessage({ "num_stations": stations.length },
-        this.sent.bind(this), this.publish.bind(this));
-};
-var stationPublisher = new StationPublisher();
-
-// station updater sends updated station information to Pebble in reasonable chunks
-var StationUpdater = function()
-{
-    this.chunkSize = 120;
-};
-StationUpdater.prototype.sent = function(e)
-{
-    console.log("Station data sent to Pebble successfully!");
-    this.next += this.chunkSize;
-    this.sendNextChunk();
-};
-StationUpdater.prototype.error = function(e)
-{
-    console.log("Sending station data to Pebble failed, retrying!");
-    this.sendNextChunk();
-    
-};
-StationUpdater.prototype.sendNextChunk = function()
-{
-    if (this.next < stations.length)
-    {
-        var update = [ this.next ];
-        var to = Math.min(stations.length, this.next + this.chunkSize);
-        for (var i = this.next; i < to; i++)
-        {
-            var station = stations[i];
-            update.push(station.bikes);
-        }
-        Pebble.sendAppMessage({ "update": update }, this.sent.bind(this), this.error.bind(this));
-    }
-};
-StationUpdater.prototype.publish = function()
-{
-    this.next = -this.chunkSize; // sent() will set it to 0
-    Pebble.sendAppMessage({ "num_stations": stations.length },
-        this.sent.bind(this), this.publish.bind(this));
-};
-var stationUpdater = new StationUpdater();
-
 // location updater
 var LocationUpdater = function() {};
 LocationUpdater.prototype.recieved = function(pos)
@@ -136,33 +129,28 @@ LocationUpdater.prototype.error = function(err)
 {
     console.log("Error recieving updated coordinates!");
 };
-LocationUpdater.prototype.sent = function(e)
-{
-    console.log("Position data sent to Pebble successfully!");
-};
-LocationUpdater.prototype.send = function(pos)
-{
-    Pebble.sendAppMessage(pos, this.sent.bind(this), this.send.bind(this, pos));
-};
 LocationUpdater.prototype.publish = function()
 {
     if (dc && this.coords)
     {
         var xy = dc.toSquare(this.coords);
-        this.send(xy);
+        msgQueue.sendAppMessage(xy, "position", true);
     }
 };
 LocationUpdater.prototype.subscribe = function()
 {
     navigator.geolocation.watchPosition(
         this.recieved.bind(this), this.error.bind(this),
-        {timeout: 15000, maximumAge: 60000}
+        {TIMEOUT: 15000, maximumAge: 60000}
     );
 };
 var locationUpdater = new LocationUpdater();
 
 // station list updater
-var DataLoader = function() {};
+var DataLoader = function()
+{
+	this.stations = [];
+};
 DataLoader.prototype.xhrRequest = function(url, type, callback)
 {
   var xhr = new XMLHttpRequest();
@@ -170,11 +158,45 @@ DataLoader.prototype.xhrRequest = function(url, type, callback)
   xhr.open(type, url);
   xhr.send();
 };
-DataLoader.prototype.update = function(publish)
+DataLoader.prototype.sendStationCount = function()
+{
+    msgQueue.sendAppMessage({ "num_stations": this.stations.length }, "station count");
+};
+DataLoader.prototype.publishStations = function()
+{
+    for (var i = 0; i < this.stations.length; i++)
+    {
+        var station = this.stations[i];
+        var pos = dc.toSquare(station);
+        msgQueue.sendAppMessage({
+            "index": i,
+            "name": station.name,
+            "x": pos.x,
+            "y": pos.y,
+            "racks": station.racks
+        }, "station #" + i);
+    }
+};
+DataLoader.prototype.updateStations = function()
+{
+    var chunkSize = 120;
+    for (var i = 0; i < this.stations.length; i += chunkSize)
+    {
+        var update = [ i ];
+        var to = Math.min(this.stations.length, i + chunkSize);
+        for (var j = i; j < to; j++)
+        {
+            var station = this.stations[j];
+            update.push(station.bikes);
+        }
+        msgQueue.sendAppMessage({ "update": update }, "update #" + (i/chunkSize));
+    }
+};
+DataLoader.prototype.update = function(first)
 {
     this.xhrRequest("https://nextbike.net/maps/nextbike-live.xml?&domains=mb", 'GET', function(responseXML)
     {
-        stations = [];
+        this.stations = [];
         var cities = responseXML.getElementsByTagName("city");
         for (var i = 0; i < cities.length; i++)
         {
@@ -193,7 +215,7 @@ DataLoader.prototype.update = function(publish)
             for (var j = 0; j < places.length; j++)
             {
                 var place = places[j];
-                stations.push({
+                this.stations.push({
                     "uid": parseInt(place.getAttribute("uid")),
                     "name": place.getAttribute("name").slice(5),
                     "latitude": place.getAttribute("lat"),
@@ -204,14 +226,12 @@ DataLoader.prototype.update = function(publish)
             }
             break;
         }
-        console.log("Collected data for " + stations.length + " stations from nextbike.net");
-        stations.sort(function(a,b) { return a.uid - b.uid; });
-        stationUpdater.publish();
-        if (publish)
-        {
-            stationPublisher.publish();
-        }
-    });
+        console.log("Collected data for " + this.stations.length + " stations from nextbike.net");
+        this.stations.sort(function(a,b) { return a.uid - b.uid; });
+        if (first) this.sendStationCount();
+        this.updateStations();
+        if (first) this.publishStations();
+    }.bind(this));
 };
 var dataLoader = new DataLoader();
 
@@ -225,5 +245,5 @@ Pebble.addEventListener('ready', function(e)
 Pebble.addEventListener('appmessage', function(e)
 {
     console.log("AppMessage received!");
-    dataLoader.update(false);
+    dataLoader.update();
 });

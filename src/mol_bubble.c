@@ -508,14 +508,14 @@ void menu_select_long_click(MenuLayer *menu_layer, MenuIndex *cell_index, void *
     send_request();
 }
 
-void compass_toggle_calibration_text(CompassHeadingData headingData)
+void compass_hide_calibration_text(bool hidden)
 {
-    layer_set_hidden((Layer*)s_calibration_layer, headingData.compass_status != CompassStatusDataInvalid);
+    layer_set_hidden((Layer*)s_calibration_layer, hidden);
 }
 
 void compass_handler(CompassHeadingData headingData)
 {
-    compass_toggle_calibration_text(headingData);
+    compass_hide_calibration_text(headingData.compass_status != CompassStatusDataInvalid);
     update_compass_direction(headingData.true_heading);
 }
 
@@ -558,9 +558,7 @@ void compass_window_load()
     compass_set_text_layer_properties(s_calibration_layer, FONT_KEY_GOTHIC_24_BOLD);
     text_layer_set_background_color(s_calibration_layer, GColorBlack);
     text_layer_set_text(s_calibration_layer, "Compass is calibrating!\n\nMove your wrist around to aid calibration.");
-    CompassHeadingData headingData;
-    compass_service_peek(&headingData);
-    compass_toggle_calibration_text(headingData);
+    compass_hide_calibration_text(true);
     layer_add_child(window_layer, text_layer_get_layer(s_calibration_layer));
     
     s_inverter_layer = NULL;
