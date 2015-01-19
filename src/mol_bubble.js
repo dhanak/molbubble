@@ -1,5 +1,4 @@
-// for debugging with jsfiddle.net
-/*
+/* // for debugging with jsfiddle.net
 var cnt = 0;
 var Pebble = {
     "addEventListener": function(evt, listener)
@@ -18,6 +17,10 @@ var Pebble = {
         {
             nack(0);
         }
+    },
+    "showSimpleNotificationOnPebble": function(title, text)
+    {
+        alert(title + ": " + text);
     }
 };
 */
@@ -58,6 +61,7 @@ MessageQueue.prototype.sendNext = function()
 	
 	var mq = this;
 	var timer = setTimeout(function() {
+		console.log("Sending " + message.type + " timed out!");
 		mq.sendNext();
 	}, this.TIMEOUT);
 	
@@ -153,10 +157,13 @@ var DataLoader = function()
 };
 DataLoader.prototype.xhrRequest = function(url, type, callback)
 {
-  var xhr = new XMLHttpRequest();
-  xhr.onload = function () { callback(this.responseXML); };
-  xhr.open(type, url);
-  xhr.send();
+    var xhr = new XMLHttpRequest();
+    xhr.addEventListener("load", function () { callback(this.responseXML); });
+    xhr.addEventListener("error", function() {
+        Pebble.showSimpleNotificationOnPebble("Error", "Failed to load data from server!");
+    });
+    xhr.open(type, url);
+    xhr.send();
 };
 DataLoader.prototype.sendStationCount = function()
 {

@@ -161,6 +161,21 @@ void update_stations()
             update_station(&s_stations[i]);
         }
         sort_stations(0, s_stations_size-1);
+    
+        // update selection
+        MenuIndex selection = menu_layer_get_selected_index(s_menu_layer);
+        if (s_selected_station && s_selected_station != s_sorted_stations[selection.row])
+        {   // find selected station in reordered list
+            for (int i = 0; i < s_stations_size; i++)
+            {
+                if (s_selected_station == s_sorted_stations[i])
+                {
+                    selection.row = i;
+                    break;
+                }
+            }
+            menu_layer_set_selected_index(s_menu_layer, selection, MenuRowAlignCenter, true);
+        }
     }
 }
 
@@ -258,21 +273,6 @@ void refresh_menu()
         frame.origin.y += ICON_LAYER_HEIGHT;
     }
     resize_menu(&frame);
-    
-    // update selection
-    MenuIndex selection = menu_layer_get_selected_index(s_menu_layer);
-    if (s_selected_station && s_selected_station != s_sorted_stations[selection.row])
-    {   // find selected station in reordered list
-        for (int i = 0; i < s_stations_size; i++)
-        {
-            if (s_selected_station == s_sorted_stations[i])
-            {
-                selection.row = i;
-                break;
-            }
-        }
-        menu_layer_set_selected_index(s_menu_layer, selection, MenuRowAlignCenter, true);
-    }
 }
 
 // compass window functions
