@@ -122,7 +122,7 @@ var dc = new DistanceCalculator({ "latitude":47.4925, "longitude":19.0514 }); //
 var LocationUpdater = function() {};
 LocationUpdater.prototype.received = function(pos)
 {
-    console.log("received updated coordinates!");
+    console.log("received updated coordinates: lat=" + pos.coords.latitude + ", lon=" + pos.coords.longitude);
     msgQueue.sendAppMessage(dc.toSquare(pos.coords), "position", true);
 };
 LocationUpdater.prototype.error = function(err)
@@ -133,7 +133,7 @@ LocationUpdater.prototype.subscribe = function()
 {
     navigator.geolocation.watchPosition(
         this.received.bind(this), this.error.bind(this),
-        {TIMEOUT: 15000, maximumAge: 60000}
+        { "enableHighAccuracy": true, "timeout": 10000, "maximumAge": 30000 }
     );
 };
 var locationUpdater = new LocationUpdater();

@@ -61,16 +61,23 @@ enum { ICON_STATIONS, ICON_BIKES, ICON_LOCATION, ICON_DITHER, ICON_COUNT };
 GBitmap *s_icons[ICON_COUNT] = { NULL };
 PropertyAnimation *s_icon_animation = NULL;
 
+#ifdef PBL_COLOR
+enum { PALETTE_STATIONS = 0, PALETTE_BIKES = 2, PALETTE_LOCATION = 4, PALETTE_GRAY = 6 };
+GColor s_palette[8];
+#endif
+
 // compass window UI elements
 Window *s_compass_window;
-GBitmap* s_compass_bitmap;
-RotBitmapLayer *s_compass_layer;
+GPath* s_compass_path;
+Layer *s_compass_layer;
 TextLayer *s_station_name_layer;
 TextLayer *s_calibration_layer;
 TextLayer *s_distance_layer;
-InverterLayer *s_inverter_layer;
 char s_distance_str[MAX_DISTANCE_LENGTH];
-
+const GPathInfo COMPASS_PATH_INFO = {
+  .num_points = 4,
+  .points = (GPoint []) {{0,-24}, {24,24}, {0,10}, {-24,24}}
+};
 // main window functions
 
 uint16_t sqrt32(uint32_t n)
@@ -304,7 +311,8 @@ void update_compass_direction(CompassHeading heading)
     if (compass_visible())
     {
         CompassHeading angle = (heading - s_selected_station->bearing + TRIG_MAX_ANGLE) % TRIG_MAX_ANGLE;
-        rot_bitmap_layer_set_angle(s_compass_layer, angle);
+        gpath_rotate_to(s_compass_path, angle);
+        layer_mark_dirty(s_compass_layer);
         /*       
         snprintf(s_distance_str, MAX_DISTANCE_LENGTH, "%d %ld %ld",
             s_selected_station->distance, heading, s_selected_station->bearing);
@@ -427,33 +435,51 @@ void outbox_sent_callback(DictionaryIterator *iterator, void *context)
   APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
 }
 
+GBitmap* get_icon(int icon_id)
+{
+#ifdef PBL_COLOR
+    gbitmap_set_palette(s_icons[icon_id], &s_palette[icon_id*2], false);
+#endif
+    return s_icons[icon_id];
+}
+
+GBitmap* get_dither_icon(GContext *ctx, int icon_id)
+{
+#ifdef PBL_COLOR
+    gbitmap_set_palette(s_icons[icon_id], &s_palette[PALETTE_GRAY], false);
+    return s_icons[icon_id];
+#else
+    graphics_context_set_compositing_mode(ctx, GCompOpSet);
+    return s_icons[ICON_DITHER];
+#endif
+}
+
 void icon_layer_update(Layer *layer, GContext *ctx)
 {
     graphics_context_set_compositing_mode(ctx, GCompOpAssign);
     GRect rect = GRect(10, 2, 32, 32);
-    graphics_draw_bitmap_in_rect(ctx, s_icons[ICON_STATIONS], rect);
+    graphics_draw_bitmap_in_rect(ctx, get_icon(ICON_STATIONS), rect);
     rect.origin.x += 42;
-    graphics_draw_bitmap_in_rect(ctx, s_icons[ICON_BIKES], rect);
+    graphics_draw_bitmap_in_rect(ctx, get_icon(ICON_BIKES), rect);
     rect.origin.x += 42;
-    graphics_draw_bitmap_in_rect(ctx, s_icons[ICON_LOCATION], rect);
+    graphics_draw_bitmap_in_rect(ctx, get_icon(ICON_LOCATION), rect);
     
-    graphics_context_set_compositing_mode(ctx, GCompOpSet);
     rect.origin.x = 10;
     if (s_pending.stations)
     {
         rect.size.h = s_stations_size ? 32 * s_pending.stations/s_stations_size : 32;
-        graphics_draw_bitmap_in_rect(ctx, s_icons[ICON_DITHER], rect);
+        graphics_draw_bitmap_in_rect(ctx, get_dither_icon(ctx, ICON_STATIONS), rect);
         rect.size.h = 32;
     }
     rect.origin.x += 42;
     if (s_pending.bikes)
     {
-        graphics_draw_bitmap_in_rect(ctx, s_icons[ICON_DITHER], rect);
+        graphics_draw_bitmap_in_rect(ctx, get_dither_icon(ctx, ICON_BIKES), rect);
     }
     rect.origin.x += 42;
     if (s_pending.location)
     {
-        graphics_draw_bitmap_in_rect(ctx, s_icons[ICON_DITHER], rect);
+        graphics_draw_bitmap_in_rect(ctx, get_dither_icon(ctx, ICON_LOCATION), rect);
     }
 }
 
@@ -515,7 +541,7 @@ void compass_hide_calibration_text(bool hidden)
 
 void compass_handler(CompassHeadingData headingData)
 {
-    compass_hide_calibration_text(headingData.compass_status != CompassStatusDataInvalid);
+    compass_hide_calibration_text(headingData.compass_status == CompassStatusCalibrated);
     update_compass_direction(headingData.true_heading);
 }
 
@@ -523,9 +549,23 @@ void compass_set_text_layer_properties(TextLayer *text_layer, const char *font_k
 {
     text_layer_set_font(text_layer, fonts_get_system_font(font_key));
     text_layer_set_background_color(text_layer, GColorClear);
-    text_layer_set_text_color(text_layer, GColorWhite);
+    text_layer_set_text_color(text_layer, GColorBlack);
     text_layer_set_text_alignment(text_layer, GTextAlignmentCenter);
     text_layer_set_overflow_mode(text_layer, GTextOverflowModeTrailingEllipsis);
+}
+
+void compass_layer_update(Layer *layer, GContext* ctx)
+{
+#ifdef PBL_COLOR
+    graphics_context_set_fill_color(ctx, GColorRed);
+    gpath_draw_filled(ctx, s_compass_path);
+    graphics_context_set_stroke_color(ctx, GColorInchworm);
+    graphics_context_set_stroke_width(ctx, 4);
+    gpath_draw_outline(ctx, s_compass_path);
+#else
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    gpath_draw_filled(ctx, s_compass_path);
+#endif
 }
 
 void compass_window_load()
@@ -539,13 +579,10 @@ void compass_window_load()
     layer_add_child(window_layer, text_layer_get_layer(s_station_name_layer));
     
     // compass
-    s_compass_bitmap = gbitmap_create_with_resource(RESOURCE_ID_COMPASS);
-    s_compass_layer = rot_bitmap_layer_create(s_compass_bitmap);
-    bitmap_layer_set_bitmap((BitmapLayer*)s_compass_layer, s_compass_bitmap);
-    GRect compass_frame = layer_get_frame((Layer*)s_compass_layer);
-    compass_frame.origin.x = (bounds.size.w-compass_frame.size.w)/2;
-    compass_frame.origin.y = 60;
-    layer_set_frame((Layer*)s_compass_layer, compass_frame);
+    s_compass_path = gpath_create(&COMPASS_PATH_INFO);
+    gpath_move_to(s_compass_path, GPoint(40, 40));
+    s_compass_layer = layer_create(GRect((bounds.size.w-80)/2, 60, 80, 80));
+    layer_set_update_proc(s_compass_layer, compass_layer_update);
     layer_add_child(window_layer, bitmap_layer_get_layer((BitmapLayer*)s_compass_layer));
     
     // distance
@@ -556,17 +593,10 @@ void compass_window_load()
     // calibration text
     s_calibration_layer = text_layer_create(GRect(0, 0, 144, bounds.size.h));
     compass_set_text_layer_properties(s_calibration_layer, FONT_KEY_GOTHIC_24_BOLD);
-    text_layer_set_background_color(s_calibration_layer, GColorBlack);
+    text_layer_set_background_color(s_calibration_layer, GColorWhite);
     text_layer_set_text(s_calibration_layer, "Compass is calibrating!\n\nMove your wrist around to aid calibration.");
     compass_hide_calibration_text(true);
     layer_add_child(window_layer, text_layer_get_layer(s_calibration_layer));
-    
-    s_inverter_layer = NULL;
-    if (watch_info_get_color() == WATCH_INFO_COLOR_WHITE)
-    {
-        s_inverter_layer = inverter_layer_create(bounds);
-        layer_add_child(window_layer, inverter_layer_get_layer(s_inverter_layer));
-    }
 }
 
 void compass_window_appear()
@@ -583,11 +613,10 @@ void compass_window_disappear()
 
 void compass_window_unload()
 {
-    inverter_layer_destroy(s_inverter_layer);
     text_layer_destroy(s_calibration_layer);
     text_layer_destroy(s_distance_layer);
-    rot_bitmap_layer_destroy(s_compass_layer);
-    gbitmap_destroy(s_compass_bitmap);
+    layer_destroy(s_compass_layer);
+    gpath_destroy(s_compass_path);
     text_layer_destroy(s_station_name_layer);
 }
 
@@ -608,6 +637,20 @@ void compass_window_click_config_provider()
 // main functions
 void init(void)
 {
+#ifdef PBL_COLOR
+    for (int i = 0; i < 8; ++i)
+    {
+        switch (i)
+        {
+        case PALETTE_STATIONS: s_palette[i] = GColorDarkCandyAppleRed;  break;
+        case PALETTE_BIKES:    s_palette[i] = GColorDarkGreen; break;
+        case PALETTE_LOCATION: s_palette[i] = GColorArmyGreen; break;
+        case PALETTE_GRAY:     s_palette[i] = GColorLightGray; break;
+        default: s_palette[i] = GColorWhite;
+        }
+    }
+#endif
+    
     // read persistence data
     persist_read_stations();
     
@@ -625,6 +668,7 @@ void init(void)
     layer_set_update_proc(s_icon_layer, icon_layer_update);
     layer_add_child(window_layer, s_icon_layer);
 
+    // callbacks must be stack allocated
     s_menu_callbacks.get_num_rows = menu_get_num_rows;
     s_menu_callbacks.draw_row = menu_draw_row;
     s_menu_callbacks.selection_changed = menu_selection_changed;
@@ -638,10 +682,16 @@ void init(void)
     menu_layer_set_callbacks(s_menu_layer, NULL, s_menu_callbacks);
     layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
     menu_layer_set_click_config_onto_window(s_menu_layer, s_main_window);
+#ifdef PBL_COLOR
+    menu_layer_set_highlight_colors(s_menu_layer, GColorDarkGreen, GColorWhite);
+#endif // PBL_COLOR
     
     // create compass window
     s_compass_window = window_create();
-    window_set_background_color(s_compass_window, GColorBlack);
+#ifdef PBL_PLATFORM_APLITE
+    window_set_fullscreen(s_compass_window, true);
+#endif
+    window_set_background_color(s_compass_window, GColorWhite);
     window_set_window_handlers(s_compass_window, (WindowHandlers) {
         .load = compass_window_load,
         .appear = compass_window_appear,

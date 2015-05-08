@@ -37,11 +37,6 @@
                 "type": "png"
             },
             {
-                "file": "images/arrow_48.png",
-                "name": "COMPASS",
-                "type": "png"
-            },
-            {
                 "file": "images/bw_bubi.png",
                 "menuIcon": true,
                 "name": "MENU_ICON",
@@ -49,7 +44,12 @@
             }
         ]
     },
+    "sdkVersion": "3",
     "shortName": "MOL Bubble",
+    "targetPlatforms": [
+        "aplite",
+        "basalt"
+    ],
     "uuid": "6a2f3113-323c-4bca-931e-ad57c446fbc4",
     "versionCode": 1,
     "versionLabel": "1.0",
