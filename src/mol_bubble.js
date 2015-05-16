@@ -31,7 +31,7 @@ var MessageQueue = function()
 	this.sending = false;
 	
 	this.MAX_RETRY  = 5;
-	this.ACK_DELAY  = 0;
+	this.ACK_DELAY  = 10;
 	this.NACK_DELAY = 200;
 	this.TIMEOUT    = 1000;
 };
