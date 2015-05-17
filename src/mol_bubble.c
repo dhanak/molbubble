@@ -70,16 +70,18 @@ static void persist_read_stations()
 void init(void)
 {
     persist_read_stations();
-    js_comm_init();
-    station_menu_init();
-    compass_window_init();
+    
+    js_comm__init();
+    station_menu__init();
+    compass_window__init();
 }
 
 void deinit(void)
 {
-    compass_window_deinit();
-    station_menu_deinit();
-    js_comm_deinit();
+    compass_window__deinit();
+    station_menu__deinit();
+    js_comm__deinit();
+    
     persist_write_stations();
     free(s_stations);
     free(s_sorted_stations);
@@ -129,7 +131,7 @@ void update_stations()
         sort_stations(0, s_stations_size-1);
     
         // update selection
-        MenuIndex selection = menu_get_selection();
+        MenuIndex selection = station_menu__get_selection();
         if (s_selected_station && s_selected_station != s_sorted_stations[selection.row])
         {   // find selected station in reordered list
             for (int i = 0; i < s_stations_size; i++)
@@ -140,7 +142,7 @@ void update_stations()
                     break;
                 }
             }
-            menu_set_selection(selection, true);
+            station_menu__set_selection(selection, true);
         }
     }
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-void js_comm_init();
-void js_comm_deinit();
+void js_comm__init();
+void js_comm__deinit();
 
-void send_request();
+void js_comm__send_request();

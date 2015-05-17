@@ -28,7 +28,7 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     if ((t = dict_find(iterator, KEY_NUM_STATIONS)) != NULL)
     {   // station publish/update begins, allocate vector (if necesary)
         reallocate_stations(t->value->int32);
-        refresh_menu();
+        station_menu__refresh_list();
     }
     else if ((t = dict_find(iterator, KEY_INDEX)) != NULL)
     {   // station publish package
@@ -58,18 +58,18 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
             if (s_pending.stations)
             {
                 s_pending.stations--;
-                refresh_icons();
+                station_menu__refresh_icons();
             }
             if (i == s_stations_size-1)
             {   // received last refresh, update
                 update_stations();
             }
             // update display
-            refresh_menu();
+            station_menu__refresh_list();
             if (station == s_selected_station)
             {
                 update_station(station);
-                update_compass_distance();
+                compass_window__update_distance();
             }
         }
     }
@@ -81,8 +81,8 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
         }
         s_pending.bikes = false;
         // update display
-        refresh_icons();
-        refresh_menu();
+        station_menu__refresh_icons();
+        station_menu__refresh_list();
     }
     else
     {   // position update package
@@ -103,9 +103,9 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
         s_pending.location = false;
         update_stations();
         // update display
-        refresh_icons();
-        refresh_menu();
-        update_compass_distance();
+        station_menu__refresh_icons();
+        station_menu__refresh_list();
+        compass_window__update_distance();
     }
 }
 
@@ -126,7 +126,7 @@ static void outbox_sent_callback(DictionaryIterator *iterator, void *context)
 
 ////////////////   E X P O R T E D   F U N C T I O N S   ////////////////
 
-void js_comm_init()
+void js_comm__init()
 {
     app_message_register_inbox_received(inbox_received_callback);
     app_message_register_inbox_dropped(inbox_dropped_callback);
@@ -136,12 +136,12 @@ void js_comm_init()
     app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
 }
 
-void js_comm_deinit()
+void js_comm__deinit()
 {
     app_message_deregister_callbacks();
 }
 
-void send_request()
+void js_comm__send_request()
 {
     DictionaryIterator *iter;
     app_message_outbox_begin(&iter);

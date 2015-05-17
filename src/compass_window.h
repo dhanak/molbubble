@@ -1,7 +1,7 @@
 #pragma once
 
-void compass_window_init();
-void compass_window_deinit();
+void compass_window__init();
+void compass_window__deinit();
 
-void push_compass_window();
-void update_compass_distance();
+void compass_window__show();
+void compass_window__update_distance();

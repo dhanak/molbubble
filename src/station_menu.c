@@ -3,58 +3,56 @@
 
 enum { ICON_LAYER_HEIGHT = 36 };
 
-// main window UI elements
-static Window *s_main_window;
-static MenuLayer *s_menu_layer;
-static PropertyAnimation *s_menu_animation = NULL;
-static MenuLayerCallbacks s_menu_callbacks;
+static Window *p_window;
+static MenuLayer *p_menu_layer;
+static PropertyAnimation *p_menu_animation = NULL;
 
-static Layer *s_icon_layer;
+static Layer *p_icon_layer;
 enum { ICON_STATIONS, ICON_BIKES, ICON_LOCATION, ICON_DITHER, ICON_COUNT };
-static GBitmap *s_icons[ICON_COUNT] = { NULL };
-static PropertyAnimation *s_icon_animation = NULL;
+static GBitmap *p_icons[ICON_COUNT] = { NULL };
+static PropertyAnimation *p_icon_animation = NULL;
 
 #ifdef PBL_COLOR
 enum { PALETTE_STATIONS = 0, PALETTE_BIKES = 2, PALETTE_LOCATION = 4, PALETTE_GRAY = 6 };
-static GColor s_palette[8];
+static GColor p_palette[8];
 #endif
 
-static void stop_menu_animations()
+static void stop_animations()
 {
-    stop_property_animation(&s_menu_animation);
-    stop_property_animation(&s_icon_animation);
+    stop_property_animation(&p_menu_animation);
+    stop_property_animation(&p_icon_animation);
 }
 
 static void resize_menu(GRect *frame)
 {
-    GRect current_frame = layer_get_frame((Layer*)s_menu_layer);
+    GRect current_frame = layer_get_frame((Layer*)p_menu_layer);
     if (!grect_equal(frame, &current_frame))
     {
-        stop_menu_animations();
+        stop_animations();
         GRect icon_frame = GRect(0, 0, 144, frame->origin.y);
-        s_menu_animation = property_animation_create_layer_frame((Layer*)s_menu_layer, &current_frame, frame);
-        s_icon_animation = property_animation_create_layer_frame(s_icon_layer, NULL, &icon_frame);
-        animation_schedule(property_animation_get_animation(s_menu_animation));
-        animation_schedule(property_animation_get_animation(s_icon_animation));
+        p_menu_animation = property_animation_create_layer_frame((Layer*)p_menu_layer, &current_frame, frame);
+        p_icon_animation = property_animation_create_layer_frame(p_icon_layer, NULL, &icon_frame);
+        animation_schedule(property_animation_get_animation(p_menu_animation));
+        animation_schedule(property_animation_get_animation(p_icon_animation));
     }
 }
 
 static GBitmap* get_icon(int icon_id)
 {
 #ifdef PBL_COLOR
-    gbitmap_set_palette(s_icons[icon_id], &s_palette[icon_id*2], false);
+    gbitmap_set_palette(p_icons[icon_id], &p_palette[icon_id*2], false);
 #endif
-    return s_icons[icon_id];
+    return p_icons[icon_id];
 }
 
 static GBitmap* get_dither_icon(GContext *ctx, int icon_id)
 {
 #ifdef PBL_COLOR
-    gbitmap_set_palette(s_icons[icon_id], &s_palette[PALETTE_GRAY], false);
-    return s_icons[icon_id];
+    gbitmap_set_palette(p_icons[icon_id], &p_palette[PALETTE_GRAY], false);
+    return p_icons[icon_id];
 #else
     graphics_context_set_compositing_mode(ctx, GCompOpSet);
-    return s_icons[ICON_DITHER];
+    return p_icons[ICON_DITHER];
 #endif
 }
 
@@ -129,83 +127,85 @@ static void menu_select_click(MenuLayer *menu_layer, MenuIndex *cell_index, void
     if (!s_pending.stations && !s_pending.location)
     {
         s_selected_station = s_sorted_stations[cell_index->row];  // just in case no row is selected yet
-        push_compass_window();
+        compass_window__show();
     }
 }
 
 static void menu_select_long_click(MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context)
 {
-    //send_request();
+    //js_comm__send_request();
 }
+
+static MenuLayerCallbacks s_menu_callbacks =
+{	// callbacks must be stack allocated
+    .get_num_rows = menu_get_num_rows,
+    .draw_row = menu_draw_row,
+    .selection_changed = menu_selection_changed,
+    .select_click = menu_select_click,
+    .select_long_click = menu_select_long_click
+};
 
 ////////////////   E X P O R T E D   F U N C T I O N S   ////////////////
 
-void station_menu_init()
+void station_menu__init()
 {
 #ifdef PBL_COLOR
     for (int i = 0; i < 8; ++i)
     {
         switch (i)
         {
-        case PALETTE_STATIONS: s_palette[i] = GColorDarkCandyAppleRed;  break;
-        case PALETTE_BIKES:    s_palette[i] = GColorDarkGreen; break;
-        case PALETTE_LOCATION: s_palette[i] = GColorArmyGreen; break;
-        case PALETTE_GRAY:     s_palette[i] = GColorLightGray; break;
-        default: s_palette[i] = GColorWhite;
+        case PALETTE_STATIONS: p_palette[i] = GColorDarkCandyAppleRed;  break;
+        case PALETTE_BIKES:    p_palette[i] = GColorDarkGreen; break;
+        case PALETTE_LOCATION: p_palette[i] = GColorArmyGreen; break;
+        case PALETTE_GRAY:     p_palette[i] = GColorLightGray; break;
+        default: p_palette[i] = GColorWhite;
         }
     }
 #endif
     
-    s_icons[ICON_STATIONS] = gbitmap_create_with_resource(RESOURCE_ID_MAP);
-    s_icons[ICON_BIKES]    = gbitmap_create_with_resource(RESOURCE_ID_BIKE);
-    s_icons[ICON_LOCATION] = gbitmap_create_with_resource(RESOURCE_ID_LOCATION);
-    s_icons[ICON_DITHER]   = gbitmap_create_with_resource(RESOURCE_ID_DITHER);
+    p_icons[ICON_STATIONS] = gbitmap_create_with_resource(RESOURCE_ID_MAP);
+    p_icons[ICON_BIKES]    = gbitmap_create_with_resource(RESOURCE_ID_BIKE);
+    p_icons[ICON_LOCATION] = gbitmap_create_with_resource(RESOURCE_ID_LOCATION);
+    p_icons[ICON_DITHER]   = gbitmap_create_with_resource(RESOURCE_ID_DITHER);
 
-    s_main_window = window_create();
-    window_stack_push(s_main_window, true);
-    Layer *window_layer = window_get_root_layer(s_main_window);
+    p_window = window_create();
+    window_stack_push(p_window, true);
+    Layer *window_layer = window_get_root_layer(p_window);
     
-    s_icon_layer = layer_create(GRect(0, 0, 144, ICON_LAYER_HEIGHT));
-    layer_set_update_proc(s_icon_layer, icon_layer_update);
-    layer_add_child(window_layer, s_icon_layer);
+    p_icon_layer = layer_create(GRect(0, 0, 144, ICON_LAYER_HEIGHT));
+    layer_set_update_proc(p_icon_layer, icon_layer_update);
+    layer_add_child(window_layer, p_icon_layer);
 
-    // callbacks must be stack allocated
-    s_menu_callbacks.get_num_rows = menu_get_num_rows;
-    s_menu_callbacks.draw_row = menu_draw_row;
-    s_menu_callbacks.selection_changed = menu_selection_changed;
-    s_menu_callbacks.select_click = menu_select_click;
-    s_menu_callbacks.select_long_click = menu_select_long_click;
-    
     GRect bounds = layer_get_bounds(window_layer);
     bounds.origin.y += ICON_LAYER_HEIGHT;
     bounds.size.h -= ICON_LAYER_HEIGHT;
-    s_menu_layer = menu_layer_create(bounds);
-    menu_layer_set_callbacks(s_menu_layer, NULL, s_menu_callbacks);
-    layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
-    menu_layer_set_click_config_onto_window(s_menu_layer, s_main_window);
+    p_menu_layer = menu_layer_create(bounds);
+    menu_layer_set_callbacks(p_menu_layer, NULL, s_menu_callbacks);
+    layer_add_child(window_layer, menu_layer_get_layer(p_menu_layer));
+    menu_layer_set_click_config_onto_window(p_menu_layer, p_window);
 #ifdef PBL_COLOR
-    menu_layer_set_highlight_colors(s_menu_layer, GColorDarkGreen, GColorWhite);
+    menu_layer_set_highlight_colors(p_menu_layer, GColorDarkGreen, GColorWhite);
 #endif // PBL_COLOR
 }
 
-void station_menu_deinit()
+void station_menu__deinit()
 {
-    stop_menu_animations();
-    menu_layer_destroy(s_menu_layer);
-    layer_destroy(s_icon_layer);
-    window_destroy(s_main_window);
+    stop_animations();
+    menu_layer_destroy(p_menu_layer);
+    layer_destroy(p_icon_layer);
+    window_destroy(p_window);
 
     for (int i = 0; i < ICON_COUNT; i++)
     {
-        gbitmap_destroy(s_icons[i]);
+        gbitmap_destroy(p_icons[i]);
     }
 }
 
-void refresh_menu()
+void station_menu__refresh_list()
 {
-    menu_layer_reload_data(s_menu_layer);
+    menu_layer_reload_data(p_menu_layer);
 
-    GRect frame = layer_get_bounds(window_get_root_layer(s_main_window));
+    GRect frame = layer_get_bounds(window_get_root_layer(p_window));
     if (s_pending.stations || s_pending.location || s_pending.bikes)
     {
         frame.size.h -= ICON_LAYER_HEIGHT;
@@ -214,17 +214,17 @@ void refresh_menu()
     resize_menu(&frame);
 }
 
-void refresh_icons()
+void station_menu__refresh_icons()
 {
-    layer_mark_dirty(s_icon_layer);
+    layer_mark_dirty(p_icon_layer);
 }
 
-MenuIndex menu_get_selection()
+MenuIndex station_menu__get_selection()
 {
-    return menu_layer_get_selected_index(s_menu_layer);
+    return menu_layer_get_selected_index(p_menu_layer);
 }
 
-void menu_set_selection(MenuIndex index, bool animate)
+void station_menu__set_selection(MenuIndex index, bool animate)
 {
-    menu_layer_set_selected_index(s_menu_layer, index, MenuRowAlignCenter, animate);
+    menu_layer_set_selected_index(p_menu_layer, index, MenuRowAlignCenter, animate);
 }

@@ -1,9 +1,11 @@
 #pragma once
 
-void station_menu_init();
-void station_menu_deinit();
+#include <pebble.h>
 
-void refresh_menu();
-void refresh_icons();
-MenuIndex menu_get_selection();
-void menu_set_selection(MenuIndex index, bool animate);
+void station_menu__init();
+void station_menu__deinit();
+
+void station_menu__refresh_list();
+void station_menu__refresh_icons();
+MenuIndex station_menu__get_selection();
+void station_menu__set_selection(MenuIndex index, bool animate);
