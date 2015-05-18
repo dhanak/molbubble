@@ -1,5 +1,5 @@
 #pragma once
-    
+
 #include "station_menu.h"
 #include "compass_window.h"
 #include "js_comm.h"

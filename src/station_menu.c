@@ -217,6 +217,7 @@ void station_menu__refresh_list()
 void station_menu__refresh_icons()
 {
     layer_mark_dirty(p_icon_layer);
+    light_enable_interaction();
 }
 
 MenuIndex station_menu__get_selection()

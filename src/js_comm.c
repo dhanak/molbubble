@@ -79,9 +79,12 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
         {
             s_stations[start+i-1].bikes = t->value->data[i];
         }
-        s_pending.bikes = false;
+        if (s_pending.bikes)
+        {
+            s_pending.bikes = false;
+            station_menu__refresh_icons();
+        }
         // update display
-        station_menu__refresh_icons();
         station_menu__refresh_list();
     }
     else
@@ -100,10 +103,13 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
             }
             t = dict_read_next(iterator);
         }
-        s_pending.location = false;
+        if (s_pending.location)
+        {
+            s_pending.location = false;
+            station_menu__refresh_icons();
+        }
         update_stations();
         // update display
-        station_menu__refresh_icons();
         station_menu__refresh_list();
         compass_window__update_distance();
     }

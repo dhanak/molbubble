@@ -1,7 +1,7 @@
 #include <pebble.h>
 #include "mol_bubble.h"
 
-enum { MAX_DISTANCE_LENGTH = 32 };
+enum { MAX_COUNTER_LENGTH = 8, MAX_DISTANCE_LENGTH = 32 };
 static const GPathInfo COMPASS_PATH_INFO = {
   .num_points = 4,
   .points = (GPoint []) {{0,-24}, {24,24}, {0,10}, {-24,24}}
@@ -13,6 +13,11 @@ static Layer *p_compass_layer;
 static TextLayer *p_station_name_layer;
 static TextLayer *p_calibration_layer;
 static TextLayer *p_distance_layer;
+#ifdef PBL_PLATFORM_BASALT
+static StatusBarLayer* p_statusbar_layer;
+static TextLayer* p_counter_layer;
+static char p_counter_str[MAX_COUNTER_LENGTH];
+#endif //  PBL_PLATFORM_BASALT
 static char p_distance_str[MAX_DISTANCE_LENGTH];
 static CompassHeading n_compass_start_angle, n_compass_angle, n_compass_target_angle;
 static Animation* p_compass_animation = NULL;
@@ -100,21 +105,37 @@ static void window_load()
 {
     Layer *window_layer = window_get_root_layer(p_window);
     GRect bounds = layer_get_bounds(window_layer);
-    
+
+#ifdef PBL_PLATFORM_BASALT
+    p_statusbar_layer = status_bar_layer_create();
+    status_bar_layer_set_separator_mode(p_statusbar_layer, StatusBarLayerSeparatorModeDotted);
+    status_bar_layer_set_colors(p_statusbar_layer, GColorClear, GColorBlack);
+    layer_add_child(window_layer, status_bar_layer_get_layer(p_statusbar_layer));
+    p_counter_layer = text_layer_create(GRect(110, -1, 32, STATUS_BAR_LAYER_HEIGHT));
+    text_layer_set_font(p_counter_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+    text_layer_set_background_color(p_counter_layer, GColorClear);
+    text_layer_set_text_color(p_counter_layer, GColorBlack);
+    text_layer_set_text_alignment(p_counter_layer, GTextAlignmentRight);
+    layer_add_child(window_layer, text_layer_get_layer(p_counter_layer));
+    int top = STATUS_BAR_LAYER_HEIGHT;
+#else
+    int top = 0;
+#endif
+
     // station name
-    p_station_name_layer = text_layer_create(GRect(0, 0, 144, 52));
+    p_station_name_layer = text_layer_create(GRect(0, top, 144, 52));
     set_text_layer_properties(p_station_name_layer, FONT_KEY_GOTHIC_24_BOLD);
     layer_add_child(window_layer, text_layer_get_layer(p_station_name_layer));
     
     // compass
     p_compass_path = gpath_create(&COMPASS_PATH_INFO);
     gpath_move_to(p_compass_path, GPoint(40, 40));
-    p_compass_layer = layer_create(GRect((bounds.size.w-80)/2, 60, 80, 80));
+    p_compass_layer = layer_create(GRect((bounds.size.w-80)/2, 56+top/2, 80, 80));
     layer_set_update_proc(p_compass_layer, layer_update);
     layer_add_child(window_layer, bitmap_layer_get_layer((BitmapLayer*)p_compass_layer));
     
     // distance
-    p_distance_layer = text_layer_create(GRect(0, bounds.size.h-26, 144, 24));
+    p_distance_layer = text_layer_create(GRect(0, bounds.size.h-28, 144, 24));
     set_text_layer_properties(p_distance_layer, FONT_KEY_GOTHIC_24);
     layer_add_child(window_layer, text_layer_get_layer(p_distance_layer));
     
@@ -216,9 +237,6 @@ static void click_config_provider()
 void compass_window__init()
 {
     p_window = window_create();
-#ifdef PBL_PLATFORM_APLITE
-    window_set_fullscreen(p_window, true);
-#endif
     window_set_background_color(p_window, GColorWhite);
     window_set_window_handlers(p_window, (WindowHandlers) {
         .load = window_load,
@@ -243,6 +261,10 @@ void compass_window__update_distance()
 {
     if (is_visible())
     {
+#ifdef PBL_PLATFORM_BASALT
+        snprintf(p_counter_str, MAX_COUNTER_LENGTH, "%d/%d", station_menu__get_selection().row+1, s_stations_size);
+        text_layer_set_text(p_counter_layer, p_counter_str);
+#endif
         snprintf(p_distance_str, MAX_DISTANCE_LENGTH, "%d meters", s_selected_station->distance);
         text_layer_set_text(p_distance_layer, p_distance_str);
     }
