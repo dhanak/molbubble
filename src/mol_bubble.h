@@ -1,5 +1,13 @@
 #pragma once
 
+#ifdef PBL_COLOR
+#define COLOR(...) __VA_ARGS__
+#define BW(...)
+#else
+#define COLOR(...)
+#define BW(...) __VA_ARGS__
+#endif
+
 #include "station_menu.h"
 #include "compass_window.h"
 #include "js_comm.h"

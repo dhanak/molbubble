@@ -28,6 +28,10 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     if ((t = dict_find(iterator, KEY_NUM_STATIONS)) != NULL)
     {   // station publish/update begins, allocate vector (if necesary)
         reallocate_stations(t->value->int32);
+        if (t->value->int32 == 0)
+        {
+            station_menu__signal_error("\n\nServer issue\nPlease try later!");
+        }
         station_menu__refresh_list();
     }
     else if ((t = dict_find(iterator, KEY_INDEX)) != NULL)

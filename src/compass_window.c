@@ -4,7 +4,7 @@
 enum { MAX_COUNTER_LENGTH = 8, MAX_DISTANCE_LENGTH = 32 };
 static const GPathInfo COMPASS_PATH_INFO = {
   .num_points = 4,
-  .points = (GPoint []) {{0,-24}, {24,24}, {0,10}, {-24,24}}
+  .points = (GPoint []) {{0,-30}, {24,18}, {0,4}, {-24,18}} // center at 0,0
 };
 
 static Window *p_window;
@@ -78,15 +78,6 @@ static void compass_handler(CompassHeadingData headingData)
     update_compass_direction(headingData.true_heading);
 }
 
-static void set_text_layer_properties(TextLayer *text_layer, const char *font_key)
-{
-    text_layer_set_font(text_layer, fonts_get_system_font(font_key));
-    text_layer_set_background_color(text_layer, GColorClear);
-    text_layer_set_text_color(text_layer, GColorBlack);
-    text_layer_set_text_alignment(text_layer, GTextAlignmentCenter);
-    text_layer_set_overflow_mode(text_layer, GTextOverflowModeTrailingEllipsis);
-}
-
 static void layer_update(Layer *layer, GContext* ctx)
 {
 #ifdef PBL_COLOR
@@ -112,10 +103,7 @@ static void window_load()
     status_bar_layer_set_colors(p_statusbar_layer, GColorClear, GColorBlack);
     layer_add_child(window_layer, status_bar_layer_get_layer(p_statusbar_layer));
     p_counter_layer = text_layer_create(GRect(110, -1, 32, STATUS_BAR_LAYER_HEIGHT));
-    text_layer_set_font(p_counter_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
-    text_layer_set_background_color(p_counter_layer, GColorClear);
-    text_layer_set_text_color(p_counter_layer, GColorBlack);
-    text_layer_set_text_alignment(p_counter_layer, GTextAlignmentRight);
+    text_layer_set_properties(p_counter_layer, FONT_KEY_GOTHIC_14, GColorClear, GColorBlack, GTextAlignmentRight);
     layer_add_child(window_layer, text_layer_get_layer(p_counter_layer));
     int top = STATUS_BAR_LAYER_HEIGHT;
 #else
@@ -124,25 +112,26 @@ static void window_load()
 
     // station name
     p_station_name_layer = text_layer_create(GRect(0, top, 144, 52));
-    set_text_layer_properties(p_station_name_layer, FONT_KEY_GOTHIC_24_BOLD);
+    text_layer_set_properties(p_station_name_layer, FONT_KEY_GOTHIC_24_BOLD, GColorClear, GColorBlack, GTextAlignmentCenter);
     layer_add_child(window_layer, text_layer_get_layer(p_station_name_layer));
     
     // compass
     p_compass_path = gpath_create(&COMPASS_PATH_INFO);
     gpath_move_to(p_compass_path, GPoint(40, 40));
-    p_compass_layer = layer_create(GRect((bounds.size.w-80)/2, 56+top/2, 80, 80));
+    p_compass_layer = layer_create(GRect((bounds.size.w-80)/2, 54+top, 80, 80));
     layer_set_update_proc(p_compass_layer, layer_update);
     layer_add_child(window_layer, bitmap_layer_get_layer((BitmapLayer*)p_compass_layer));
     
     // distance
     p_distance_layer = text_layer_create(GRect(0, bounds.size.h-28, 144, 24));
-    set_text_layer_properties(p_distance_layer, FONT_KEY_GOTHIC_24);
+    text_layer_set_properties(p_distance_layer, FONT_KEY_GOTHIC_24, GColorClear, GColorBlack, GTextAlignmentCenter);
     layer_add_child(window_layer, text_layer_get_layer(p_distance_layer));
     
     // calibration text
     p_calibration_layer = text_layer_create(GRect(0, 0, 144, bounds.size.h));
-    set_text_layer_properties(p_calibration_layer, FONT_KEY_GOTHIC_24_BOLD);
-    text_layer_set_background_color(p_calibration_layer, GColorWhite);
+    text_layer_set_properties(p_calibration_layer, FONT_KEY_GOTHIC_24_BOLD,
+                              COLOR(GColorElectricBlue) BW(GColorWhite), GColorBlack,
+                              GTextAlignmentCenter);
     text_layer_set_text(p_calibration_layer, "Compass is calibrating!\n\nMove your wrist around to aid calibration.");
     set_calibration_text_visibility(false);
     layer_add_child(window_layer, text_layer_get_layer(p_calibration_layer));

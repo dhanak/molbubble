@@ -12,6 +12,8 @@ enum { ICON_STATIONS, ICON_BIKES, ICON_LOCATION, ICON_DITHER, ICON_COUNT };
 static GBitmap *p_icons[ICON_COUNT] = { NULL };
 static PropertyAnimation *p_icon_animation = NULL;
 
+static TextLayer* p_error_layer;
+
 #ifdef PBL_COLOR
 enum { PALETTE_STATIONS = 0, PALETTE_BIKES = 2, PALETTE_LOCATION = 4, PALETTE_GRAY = 6 };
 static GColor p_palette[8];
@@ -124,7 +126,7 @@ static void menu_selection_changed(MenuLayer *menu_layer, MenuIndex new_index, M
 
 static void menu_select_click(MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context)
 {
-    if (!s_pending.stations && !s_pending.location)
+    if (!s_pending.stations && !s_pending.location && s_stations_size > 0)
     {
         s_selected_station = s_sorted_stations[cell_index->row];  // just in case no row is selected yet
         compass_window__show();
@@ -172,10 +174,12 @@ void station_menu__init()
     window_stack_push(p_window, true);
     Layer *window_layer = window_get_root_layer(p_window);
     
+    // icon layer
     p_icon_layer = layer_create(GRect(0, 0, 144, ICON_LAYER_HEIGHT));
     layer_set_update_proc(p_icon_layer, icon_layer_update);
     layer_add_child(window_layer, p_icon_layer);
 
+    // menu layer
     GRect bounds = layer_get_bounds(window_layer);
     bounds.origin.y += ICON_LAYER_HEIGHT;
     bounds.size.h -= ICON_LAYER_HEIGHT;
@@ -186,11 +190,20 @@ void station_menu__init()
 #ifdef PBL_COLOR
     menu_layer_set_highlight_colors(p_menu_layer, GColorDarkGreen, GColorWhite);
 #endif // PBL_COLOR
+
+    // error message
+    p_error_layer = text_layer_create(layer_get_bounds(window_layer));
+    text_layer_set_properties(p_error_layer, FONT_KEY_GOTHIC_24_BOLD,
+                              COLOR(GColorSunsetOrange) BW(GColorWhite), GColorBlack,
+                              GTextAlignmentCenter);
+    layer_set_hidden(text_layer_get_layer(p_error_layer), true);
+    layer_add_child(window_layer, text_layer_get_layer(p_error_layer));
 }
 
 void station_menu__deinit()
 {
     stop_animations();
+    text_layer_destroy(p_error_layer);
     menu_layer_destroy(p_menu_layer);
     layer_destroy(p_icon_layer);
     window_destroy(p_window);
@@ -228,4 +241,12 @@ MenuIndex station_menu__get_selection()
 void station_menu__set_selection(MenuIndex index, bool animate)
 {
     menu_layer_set_selected_index(p_menu_layer, index, MenuRowAlignCenter, animate);
+}
+
+void station_menu__signal_error(const char* msg)
+{
+    s_pending.stations = 0;
+    s_pending.bikes = 0;
+    text_layer_set_text(p_error_layer, msg);
+    layer_set_hidden(text_layer_get_layer(p_error_layer), false);
 }

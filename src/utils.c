@@ -40,3 +40,16 @@ void stop_property_animation(PropertyAnimation** prop_anim)
         *prop_anim = NULL;
     }    
 }
+
+void text_layer_set_properties(TextLayer *text_layer,
+                               const char *font_key,
+                               GColor bg_color,
+                               GColor text_color,
+                               GTextAlignment alignment)
+{
+    text_layer_set_font(text_layer, fonts_get_system_font(font_key));
+    text_layer_set_background_color(text_layer, bg_color);
+    text_layer_set_text_color(text_layer, text_color);
+    text_layer_set_text_alignment(text_layer, alignment);
+    text_layer_set_overflow_mode(text_layer, GTextOverflowModeTrailingEllipsis);
+}
